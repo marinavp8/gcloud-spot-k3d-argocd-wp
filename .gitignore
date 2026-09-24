@@ -1,0 +1,15 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+crash.log
+tfplan
+
+# Claves SSH generadas e inventario (contiene IP y ruta a la clave)
+keys/
+ansible/inventory.ini
+
+# Varios
+*.retry
+.DS_Store

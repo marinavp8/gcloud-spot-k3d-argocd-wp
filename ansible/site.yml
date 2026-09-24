@@ -1,0 +1,20 @@
+- name: k3d + ArgoCD + cert-manager + WordPress
+  hosts: k3d
+  become: true
+  vars:
+    data_dir: /mnt/data
+    cluster_name: wp
+    k3d_version: v5.9.0
+    k3s_image: rancher/k3s:v1.36.4-k3s1
+    kubectl_version: v1.36.4
+    argocd_version: v3.5.3
+    cert_manager_version: v1.21.2
+    kubeconfig: /root/.kube/config
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  roles:
+    - base
+    - k3d
+    - argocd
+    - cert_manager
+    - wordpress

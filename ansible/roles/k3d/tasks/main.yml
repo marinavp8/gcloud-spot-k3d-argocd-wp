@@ -1,0 +1,65 @@
+- name: Instalar kubectl {{ kubectl_version }}
+  ansible.builtin.get_url:
+    url: "https://dl.k8s.io/release/{{ kubectl_version }}/bin/linux/amd64/kubectl"
+    dest: /usr/local/bin/kubectl
+    mode: "0755"
+
+- name: Instalar k3d {{ k3d_version }}
+  ansible.builtin.get_url:
+    url: "https://github.com/k3d-io/k3d/releases/download/{{ k3d_version }}/k3d-linux-amd64"
+    dest: /usr/local/bin/k3d
+    mode: "0755"
+
+- name: Directorio de volúmenes persistentes en el disco de datos
+  ansible.builtin.file:
+    path: "{{ data_dir }}/k3s-storage"
+    state: directory
+    mode: "0755"
+
+- name: ¿Existe el cluster?
+  ansible.builtin.command: k3d cluster get {{ cluster_name }}
+  register: k3d_get
+  failed_when: false
+  changed_when: false
+
+# Traefik (incluido en k3s) queda publicado en 80/443 del host vía el LB de k3d.
+# Los PV de local-path viven en el disco de datos.
+- name: Crear cluster k3d
+  ansible.builtin.command: >-
+    k3d cluster create {{ cluster_name }}
+    --image {{ k3s_image }}
+    --servers 1 --agents 0
+    --api-port 127.0.0.1:6443
+    -p 80:80@loadbalancer
+    -p 443:443@loadbalancer
+    -v {{ data_dir }}/k3s-storage:/var/lib/rancher/k3s/storage@server:0
+    --wait
+  when: k3d_get.rc != 0
+
+- name: Kubeconfig de root
+  ansible.builtin.command: k3d kubeconfig write {{ cluster_name }} --output {{ kubeconfig }}
+  args:
+    creates: "{{ kubeconfig }}"
+
+- name: Directorio ~/.kube de {{ ansible_user }}
+  ansible.builtin.file:
+    path: "/home/{{ ansible_user }}/.kube"
+    state: directory
+    owner: "{{ ansible_user }}"
+    mode: "0700"
+
+- name: Kubeconfig para {{ ansible_user }}
+  ansible.builtin.copy:
+    src: "{{ kubeconfig }}"
+    dest: "/home/{{ ansible_user }}/.kube/config"
+    remote_src: true
+    owner: "{{ ansible_user }}"
+    mode: "0600"
+
+- name: Esperar a Traefik de k3s
+  ansible.builtin.command: kubectl -n kube-system rollout status deploy/traefik --timeout=300s
+  register: traefik_ready
+  retries: 20
+  delay: 10
+  until: traefik_ready.rc == 0
+  changed_when: false

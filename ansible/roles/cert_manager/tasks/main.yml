@@ -1,0 +1,22 @@
+- name: Instalar cert-manager {{ cert_manager_version }}
+  ansible.builtin.command: >-
+    kubectl apply --server-side --force-conflicts
+    -f https://github.com/cert-manager/cert-manager/releases/download/{{ cert_manager_version }}/cert-manager.yaml
+  register: out
+  changed_when: "'serverside-applied' in out.stdout and 'unchanged' not in out.stdout"
+
+- name: Esperar a cert-manager
+  ansible.builtin.command: kubectl -n cert-manager rollout status deploy/{{ item }} --timeout=300s
+  loop: [cert-manager, cert-manager-cainjector, cert-manager-webhook]
+  changed_when: false
+
+# El webhook tarda unos segundos en aceptar peticiones tras estar Ready
+- name: ClusterIssuers Let's Encrypt (prod + staging)
+  ansible.builtin.command: kubectl apply -f -
+  args:
+    stdin: "{{ lookup('template', 'cluster-issuers.yaml.j2') }}"
+  register: out
+  retries: 12
+  delay: 10
+  until: out.rc == 0
+  changed_when: "'unchanged' not in out.stdout"

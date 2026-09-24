@@ -1,0 +1,38 @@
+- name: Namespace argocd
+  ansible.builtin.shell: kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+  register: out
+  changed_when: "'created' in out.stdout"
+
+- name: Instalar ArgoCD {{ argocd_version }}
+  ansible.builtin.command: >-
+    kubectl apply -n argocd --server-side --force-conflicts
+    -f https://raw.githubusercontent.com/argoproj/argo-cd/{{ argocd_version }}/manifests/install.yaml
+  register: out
+  changed_when: "'serverside-applied' in out.stdout and 'unchanged' not in out.stdout"
+
+# TLS lo termina Traefik; argocd-server sirve HTTP plano detrás
+- name: argocd-server en modo insecure
+  ansible.builtin.command: >-
+    kubectl -n argocd patch configmap argocd-cmd-params-cm --type merge
+    -p '{"data":{"server.insecure":"true"}}'
+  register: out
+  changed_when: "'no change' not in out.stdout"
+
+- name: Reiniciar argocd-server
+  ansible.builtin.command: kubectl -n argocd rollout restart deploy/argocd-server
+  when: out.changed
+
+- name: Esperar a ArgoCD
+  ansible.builtin.command: kubectl -n argocd rollout status {{ item }} --timeout=300s
+  loop:
+    - deploy/argocd-server
+    - deploy/argocd-repo-server
+    - statefulset/argocd-application-controller
+  changed_when: false
+
+- name: Ingress de ArgoCD
+  ansible.builtin.command: kubectl apply -f -
+  args:
+    stdin: "{{ lookup('template', 'argocd-ingress.yaml.j2') }}"
+  register: out
+  changed_when: "'unchanged' not in out.stdout"

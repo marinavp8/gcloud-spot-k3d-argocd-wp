@@ -1,0 +1,55 @@
+- name: Esperar a que aparezca el disco de datos
+  ansible.builtin.wait_for:
+    path: /dev/disk/by-id/google-data
+    timeout: 300
+
+- name: Formatear disco de datos (solo si está vacío)
+  community.general.filesystem:
+    dev: /dev/disk/by-id/google-data
+    fstype: ext4
+    opts: -m 0 -E lazy_itable_init=0,lazy_journal_init=0,discard
+
+- name: UUID del disco de datos
+  ansible.builtin.command: blkid -s UUID -o value /dev/disk/by-id/google-data
+  register: data_uuid
+  changed_when: false
+
+- name: Montar disco de datos en {{ data_dir }}
+  ansible.posix.mount:
+    path: "{{ data_dir }}"
+    src: "UUID={{ data_uuid.stdout }}"
+    fstype: ext4
+    opts: discard,defaults,nofail
+    state: mounted
+
+- name: Paquetes base
+  ansible.builtin.apt:
+    name: [ca-certificates, curl, jq]
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Instalar Docker
+  ansible.builtin.shell: curl -fsSL https://get.docker.com | sh
+  args:
+    creates: /usr/bin/docker
+
+- name: Docker espera al disco de datos (tras parada de la Spot)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/docker.service.d/data-disk.conf
+    content: |
+      [Unit]
+      RequiresMountsFor={{ data_dir }}
+  register: docker_dropin
+
+- name: Docker habilitado
+  ansible.builtin.systemd_service:
+    name: docker
+    enabled: true
+    state: "{{ 'restarted' if docker_dropin.changed else 'started' }}"
+    daemon_reload: "{{ docker_dropin.changed }}"
+
+- name: Usuario {{ ansible_user }} en grupo docker
+  ansible.builtin.user:
+    name: "{{ ansible_user }}"
+    groups: docker
+    append: true

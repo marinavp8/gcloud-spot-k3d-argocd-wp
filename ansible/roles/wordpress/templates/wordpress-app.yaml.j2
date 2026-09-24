@@ -1,0 +1,31 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: wordpress
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: {{ repo_url }}
+    targetRevision: main
+    path: k8s/wordpress
+    kustomize:
+      # El dominio depende de la IP: se inyecta aquí, no en git
+      patches:
+        - target:
+            kind: Ingress
+            name: wordpress
+          patch: |-
+            - op: replace
+              path: /spec/rules/0/host
+              value: {{ wp_domain }}
+            - op: replace
+              path: /spec/tls/0/hosts/0
+              value: {{ wp_domain }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: wordpress
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

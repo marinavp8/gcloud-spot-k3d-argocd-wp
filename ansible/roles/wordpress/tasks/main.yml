@@ -1,0 +1,47 @@
+- name: Namespace wordpress
+  ansible.builtin.shell: kubectl create namespace wordpress --dry-run=client -o yaml | kubectl apply -f -
+  register: out
+  changed_when: "'created' in out.stdout"
+
+# Contraseñas generadas en el servidor; nunca pasan por git
+- name: ¿Existe el secret de la BBDD?
+  ansible.builtin.command: kubectl -n wordpress get secret wordpress-db
+  register: db_secret
+  failed_when: false
+  changed_when: false
+
+- name: Crear secret de la BBDD
+  ansible.builtin.shell: >-
+    kubectl -n wordpress create secret generic wordpress-db
+    --from-literal=root-password="$(openssl rand -hex 24)"
+    --from-literal=password="$(openssl rand -hex 24)"
+  when: db_secret.rc != 0
+  no_log: true
+
+- name: Application de ArgoCD para WordPress
+  ansible.builtin.command: kubectl apply -f -
+  args:
+    stdin: "{{ lookup('template', 'wordpress-app.yaml.j2') }}"
+  register: out
+  changed_when: "'unchanged' not in out.stdout"
+
+- name: Esperar a que ArgoCD sincronice y WordPress esté Healthy
+  ansible.builtin.command: >-
+    kubectl -n argocd get application wordpress
+    -o jsonpath='{.status.sync.status}/{.status.health.status}'
+  register: app
+  retries: 40
+  delay: 15
+  until: app.stdout == 'Synced/Healthy'
+  changed_when: false
+
+- name: Esperar al certificado de Let's Encrypt
+  ansible.builtin.command: kubectl -n wordpress wait certificate/wordpress-tls --for=condition=Ready --timeout=300s
+  changed_when: false
+
+- name: Resumen
+  ansible.builtin.debug:
+    msg:
+      - "WordPress: https://{{ wp_domain }}"
+      - "ArgoCD:    https://{{ argocd_domain }}  (user admin)"
+      - "Password ArgoCD: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d"
