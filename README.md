@@ -91,6 +91,22 @@ gcloud compute instances start k3d-wp --zone us-central1-a    # si la Spot se ha
 terraform -chdir=terraform destroy                            # borrarlo todo (incluido el disco de datos)
 ```
 
+## Detalles de la ejecución (2026-09-24)
+
+1. `terraform apply`: 10 recursos creados. IP `34.10.188.145`.
+2. Primer `ansible-playbook`: el primer `apt` tardó ~10 min (lock de unattended-upgrades en el arranque) y falló al copiar el drop-in de Docker porque no existía `/etc/systemd/system/docker.service.d` → se añadió la tarea que crea el directorio.
+3. Segundo `ansible-playbook`: `ok=36 changed=20 failed=0`.
+4. Verificación:
+
+   | Prueba | Resultado |
+   |---|---|
+   | `http://wp-34-10-188-145.sslip.io` | `301` → `https://…` |
+   | `https://wp-34-10-188-145.sslip.io` | `302` → `/wp-admin/install.php` |
+   | `https://argocd-34-10-188-145.sslip.io` | `200` |
+   | Certificados | `Let's Encrypt, CN=YR1`, válidos hasta 23-dic-2026 |
+   | Application `wordpress` | `Synced / Healthy` |
+   | PVCs | `data-mariadb-0` 5Gi, `wordpress` 10Gi, en `/mnt/data` (disco de 40 GB) |
+
 ## Seguridad
 
 - `keys/`, `*.tfstate`, `*.tfvars` y `ansible/inventory.ini` están en `.gitignore`. La clave privada SSH también está en `terraform.tfstate`: tratarlo como secreto.

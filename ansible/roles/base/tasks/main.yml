@@ -33,6 +33,12 @@
   args:
     creates: /usr/bin/docker
 
+- name: Directorio de drop-ins de Docker
+  ansible.builtin.file:
+    path: /etc/systemd/system/docker.service.d
+    state: directory
+    mode: "0755"
+
 - name: Docker espera al disco de datos (tras parada de la Spot)
   ansible.builtin.copy:
     dest: /etc/systemd/system/docker.service.d/data-disk.conf
