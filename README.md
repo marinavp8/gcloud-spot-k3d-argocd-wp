@@ -4,6 +4,10 @@
 - **Ansible** instala Docker, k3d (k3s), ArgoCD y cert-manager, y registra WordPress como Application de ArgoCD.
 - **ArgoCD** despliega WordPress + MariaDB desde `k8s/wordpress` de este repo (GitOps).
 
+## Demo en vídeo
+
+▶️ [video/wp-demo.mp4](video/wp-demo.mp4) (27 s): portada → login → nueva entrada → publicar → entrada y portada públicas. Grabado con [agent-browser](https://github.com/vercel-labs/agent-browser) (`record start` / `record stop`) contra `https://wp-34-10-188-145.sslip.io`.
+
 ## Prompt original
 
 ```
